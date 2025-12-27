@@ -1,0 +1,9 @@
+# Compiled Binaries
+memsim
+*.o
+*.out
+
+# IDE/System files
+.vscode/
+.DS_Store
+build/
