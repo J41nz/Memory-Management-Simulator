@@ -3,19 +3,17 @@
 
 int main(){
     //1. initialize a 1024 byte memory pool
-    MemoryManager myOS(1024);
-
-    std::cout << "Initial Memory State: ";
+    MemoryManager myOS(1000);
+    myOS.allocate(200, 1);
+    myOS.allocate(200, 2);
     myOS.dump_memory();
 
-    //2. Simulate some allocations
-    std::cout << "Allocating 200 bytes for Process 1...\n";
-    myOS.allocate(200, 1);
+    std::cout << "\nFreeing Process 1...\n";
+    myOS.deallocate(1);
+    myOS.dump_memory();
 
-    std::cout << "Allocating 150 bytes for Process 2...\n";
-    myOS.allocate(150, 2);
-
-    //See the results
+    std::cout << "\nFreeing Process 2 (Watch coalescing happen!)...\n";
+    myOS.deallocate(2);
     myOS.dump_memory();
     
     return 0;

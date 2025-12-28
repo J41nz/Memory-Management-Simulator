@@ -14,6 +14,8 @@ class MemoryManager{
     public:
         MemoryManager(size_t size); //declaration of constructor. Initialize memory
         ~MemoryManager(); //Cleanup memory to prevent memory leaks!
+        
+        void set_strategy(std::string strategy);
 
         //Core functions to be implemented later
         void* allocate(size_t size, int process_id);

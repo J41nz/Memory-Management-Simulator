@@ -17,48 +17,117 @@ MemoryManager::~MemoryManager(){
     }
 }
 
+void MemoryManager::set_strategy(std::string strategy){
+    current_strategy = strategy;
+}
+
 //the allocation logic
 void* MemoryManager::allocate(size_t request_size, int process_id){
-    MemoryBlock* current = head;
-
-    //First fit - loop through the list until we find a block that fits
-    while(current!=nullptr){
-        if(current->is_free && current->size >= request_size){
-            //if the block is significantly larger than requested, split it.
-            if(current->size > request_size){
-                //Create a new "remainder" block
-                MemoryBlock* new_free_block = new MemoryBlock(
-                    current->start_address+request_size, //Starts right after the allocated part
-                    current->size - request_size, //remaining size
-                    true, //it is free
-                    -1  //no process owns it
-                );
-
-                //Insert the new block into our doubly linked list
-                new_free_block->next = current->next;
-                new_free_block->prev = current;
-                if(current->next!=nullptr){
-                    current->next->prev = new_free_block;
+    MemoryBlock* selected_block = nullptr;
+    
+    if(current_strategy == "First Fit"){
+        MemoryBlock* current = head;
+        while(current!=nullptr){
+            if(current->is_free && current->size>=request_size){
+                selected_block = current;
+                break;
+            }
+            current = current->next;
+        }
+    }
+    else if(current_strategy == "Best Fit"){
+        MemoryBlock* current = head;
+        size_t smallest_so_far = 9999999;
+        while(current!=nullptr){
+            if(current->is_free && current->size>=request_size){
+                if(current->size < smallest_so_far){
+                    smallest_so_far = current -> size;
+                    selected_block = current;
                 }
-                current->next = new_free_block;
-                //update the current block to reflect its new size
-                current->size = request_size;
+            }
+            current = current->next;
+        }
+    }
+    else if(current_strategy == "Worst Fit"){
+        MemoryBlock* current = head;
+        size_t largest_so_far = 0;
+        while(current!=nullptr){
+            if(current->is_free && current->size>=request_size){
+                if(current->size>largest_so_far){
+                    largest_so_far = current->size;
+                    selected_block = current;
+                }
+            }
+            current = current->next;
+        }
+    }
+
+    //Now after we find a block, using the split logic to split the memory to use only the required amount of memory
+    if(selected_block){
+        if(selected_block->size > request_size){
+            MemoryBlock* new_free_block = new MemoryBlock(
+                selected_block->start_address+request_size,
+                selected_block->size-request_size, 
+                true, -1
+            );
+            new_free_block->next = selected_block->next;
+            new_free_block->prev = selected_block;
+            if(selected_block->next) selected_block->next->prev = new_free_block;
+            selected_block->next = new_free_block;
+            selected_block->size = request_size;
+        }
+        selected_block->is_free = false;
+        selected_block->process_id = process_id;
+        return (void*)selected_block->start_address;
+    }
+
+    return nullptr;
+}
+
+void MemoryManager::deallocate(int process_id){
+    MemoryBlock* current = head;
+    bool found = false;
+
+    while(current!=nullptr){
+        //find the blockassigned to this process 
+        if(!current->is_free && current->process_id==process_id){
+            current->is_free=true;
+            current->process_id = -1;
+            found = true;
+
+            //coalescing logic
+            //1. Checks if the next block is also free
+            if(current->next!=nullptr && current->next->is_free){
+                MemoryBlock* temp = current->next;
+                current->size+=temp->size;
+                current->next = temp->next;
+                if(temp->next!=nullptr){
+                    temp->next->prev = current;
+                }
+                delete temp;
             }
 
-            //Mark the current block as used
-            current->is_free = false;
-            current->process_id = process_id;
+            //2. checks if previous block is also free
+            if(current->prev!=nullptr && current->prev->is_free){
+                MemoryBlock* prev_block = current->prev;
+                prev_block->size+=current->size; 
+                prev_block->next = current->next;
+                if(current->next != nullptr){
+                    current->next->prev = prev_block;
+                }
+                delete current;                
+            }
 
-            //Return the simulated "address" (cast to void* to mimic malloc)
-            return (void*)current->start_address;
+            std::cout << "Process " << process_id << " deallocated and memory coalesced.\n";
+            return; 
         }
         current = current->next;
     }
 
-    //If we reach here, no block was found (Out of memory)
-    return nullptr;
+    if(!found){
+        std::cout << "Error: Process ID " << process_id << " not found.\n";
+    }
 }
-
 //Simple Visualization for debugging
 void MemoryManager::dump_memory(){
     MemoryBlock* current = head;
