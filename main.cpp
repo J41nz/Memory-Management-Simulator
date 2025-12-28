@@ -31,6 +31,7 @@ int main(){
             std::cout << "  strategy <name>     - Set strategy (first_fit, best_fit, worst_fit)\n";
             std::cout << "  dump                - Show memory map\n";
             std::cout << "  stats               - Show fragmentation and utilization\n";
+            std::cout << "  access              - Checks for an address in L1 and L2 Caches\n";
         }
         else if(command == "init"){
             size_t size;
@@ -43,12 +44,13 @@ int main(){
             size_t size;
             int pid;
             if(ss >> size >> pid){
-                long long addr = memSim->allocate(size, pid);
-                if(addr!=-1)
-                    std::cout << "Allocated block id=" << pid << " at address=0x"
-                              << std::hex << std::setw(4) << std::setfill('0') << addr << std::dec << "\n";
-                else
+                auto addr = memSim->allocate(size, pid);
+                if(!addr)
                     std::cout << "Error: Not enough memory!\n";
+                else{
+                    std::cout << "Allocated block id=" << pid << " at address=0x"
+                              << std::hex << std::setw(4) << std::setfill('0') << *addr << std::dec << "\n";
+                }
             }
         }
         else if(command == "free"){
@@ -69,6 +71,13 @@ int main(){
         }
         else if(command == "stats"){
             memSim->display_stats();
+        }
+        else if(command == "access"){
+            size_t addr;
+            if(ss >> std::hex >> addr){
+                memSim->access_memory(addr);
+            }
+            std::cout << std::dec;
         }
         else{
             std::cout << "Unknown command. Type 'help'.\n";
