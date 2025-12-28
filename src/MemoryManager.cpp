@@ -128,6 +128,44 @@ void MemoryManager::deallocate(int process_id){
         std::cout << "Error: Process ID " << process_id << " not found.\n";
     }
 }
+
+void MemoryManager::display_stats(){
+    size_t used_memory = 0;
+    size_t free_memory = 0;
+    size_t largest_free_block = 0;
+    int free_block_count = 0;
+
+    MemoryBlock* current = head;
+    while(current!=nullptr){
+        if(current->is_free){
+            free_memory += current->size;
+            if(current->size > largest_free_block){
+                largest_free_block = current->size;
+            }
+            free_block_count++;
+        } else {
+            used_memory += current->size;
+        }
+        current = current->next;
+    }
+
+    double utilization = (static_cast<double>(used_memory)/total_size) * 100.0;
+
+    //External fragmentation calculation
+    double fragmentation = 0;
+    if(free_memory>0){
+        fragmentation = (1.0 - (static_cast<double>(largest_free_block)/free_memory)) * 100.0;
+    }
+
+    std::cout << "\n========== MEMORY STATISTICS ==========\n";
+    std::cout << "Total Memory:    " << total_size << " bytes\n";
+    std::cout << "Used Memory:     " << used_memory << " bytes\n";
+    std::cout << "Free Memory:     " << free_memory << " bytes\n";
+    std::cout << "Utilization:     " << std::fixed << std::setprecision(2) << utilization << "%\n";
+    std::cout << "External Frag:   " << fragmentation << "%\n";
+    std::cout << "Free Block Count: " << free_block_count << "\n";
+    std::cout << "=======================================\n";
+}
 //Simple Visualization for debugging
 void MemoryManager::dump_memory(){
     MemoryBlock* current = head;

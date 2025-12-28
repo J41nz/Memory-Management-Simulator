@@ -16,7 +16,7 @@ class MemoryManager{
         ~MemoryManager(); //Cleanup memory to prevent memory leaks!
         
         void set_strategy(std::string strategy);
-
+        void display_stats();
         //Core functions to be implemented later
         void* allocate(size_t size, int process_id);
         void deallocate(int process_id);
