@@ -1,5 +1,6 @@
 #include "./include/MemoryManager.hpp"
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <sstream>
 
@@ -42,9 +43,10 @@ int main(){
             size_t size;
             int pid;
             if(ss >> size >> pid){
-                void* addr = memSim->allocate(size, pid);
-                if(addr!=nullptr)
-                    std::cout << "Allocated at address: " << addr << "\n";
+                long long addr = memSim->allocate(size, pid);
+                if(addr!=-1)
+                    std::cout << "Allocated block id=" << pid << " at address=0x"
+                              << std::hex << std::setw(4) << std::setfill('0') << addr << std::dec << "\n";
                 else
                     std::cout << "Error: Not enough memory!\n";
             }

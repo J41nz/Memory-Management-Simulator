@@ -22,7 +22,7 @@ void MemoryManager::set_strategy(std::string strategy){
 }
 
 //the allocation logic
-void* MemoryManager::allocate(size_t request_size, int process_id){
+long long MemoryManager::allocate(size_t request_size, int process_id){
     MemoryBlock* selected_block = nullptr;
     
     if(current_strategy == "First Fit"){
@@ -78,10 +78,10 @@ void* MemoryManager::allocate(size_t request_size, int process_id){
         }
         selected_block->is_free = false;
         selected_block->process_id = process_id;
-        return (void*)selected_block->start_address;
+        return (long long)selected_block->start_address;
     }
 
-    return nullptr;
+    return -1;
 }
 
 void MemoryManager::deallocate(int process_id){
@@ -162,7 +162,7 @@ void MemoryManager::display_stats(){
     std::cout << "Used Memory:     " << used_memory << " bytes\n";
     std::cout << "Free Memory:     " << free_memory << " bytes\n";
     std::cout << "Utilization:     " << std::fixed << std::setprecision(2) << utilization << "%\n";
-    std::cout << "External Frag:   " << fragmentation << "%\n";
+    std::cout << "External Fragmentation:   " << fragmentation << "%\n";
     std::cout << "Free Block Count: " << free_block_count << "\n";
     std::cout << "=======================================\n";
 }
