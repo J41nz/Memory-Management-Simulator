@@ -1,7 +1,7 @@
 # Variables
 CXX = g++
 CXXFLAGS = -Wall -Wextra -std=c++17 -Iinclude
-SRC = src/MemoryManager.cpp src/Cache.cpp main.cpp
+SRC = src/PageTable.cpp src/Cache.cpp src/MemoryManager.cpp  main.cpp
 OBJ = $(SRC:.cpp=.o)
 TARGET = memsim
 

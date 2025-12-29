@@ -31,7 +31,8 @@ int main(){
             std::cout << "  strategy <name>     - Set strategy (first_fit, best_fit, worst_fit)\n";
             std::cout << "  dump                - Show memory map\n";
             std::cout << "  stats               - Show fragmentation and utilization\n";
-            std::cout << "  access              - Checks for an address in L1 and L2 Caches\n";
+            std::cout << "  access <address>    - Checks for an address in L1 and L2 Caches\n";
+            std::cout << "  vaccess <pid> <virtual_address> - returns physical address from virtual address of a process\n"; 
         }
         else if(command == "init"){
             size_t size;
@@ -45,11 +46,11 @@ int main(){
             int pid;
             if(ss >> size >> pid){
                 auto addr = memSim->allocate(size, pid);
-                if(!addr)
+                if(addr==-1)
                     std::cout << "Error: Not enough memory!\n";
                 else{
                     std::cout << "Allocated block id=" << pid << " at address=0x"
-                              << std::hex << std::setw(4) << std::setfill('0') << *addr << std::dec << "\n";
+                              << std::hex << std::setw(4) << std::setfill('0') << addr << std::dec << "\n";
                 }
             }
         }
@@ -74,10 +75,22 @@ int main(){
         }
         else if(command == "access"){
             size_t addr;
-            if(ss >> std::hex >> addr){
+            if(ss >> addr){
                 memSim->access_memory(addr);
             }
             std::cout << std::dec;
+        }
+        else if(command == "vaccess"){
+            int pid;
+            size_t v_addr;
+            if(ss >> pid >> v_addr){
+                std::cout << "Translating Virtual Address 0x" << std::hex << v_addr << " for PID " << pid << "...\n";
+                size_t p_addr = memSim->virtual_to_physical(pid, v_addr);
+                std::cout << "Physical Address: 0x" << std::hex << p_addr << std::dec << "\n";
+
+                // Now pass physical address to the Cache
+                memSim->access_memory(p_addr);
+            }
         }
         else{
             std::cout << "Unknown command. Type 'help'.\n";

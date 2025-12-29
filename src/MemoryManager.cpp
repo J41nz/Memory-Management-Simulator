@@ -5,6 +5,10 @@
 MemoryManager::MemoryManager(size_t size) : total_size(size), current_strategy("First Fit") {
     //create the initial block representing all of memory
     head = new MemoryBlock(0, size, true, -1);
+    //Initializing L1: 128 bytes, 16-byte blocks
+    l1_cache = new Cache(128, 16);
+    //Initialize L2: 512 bytes, 16-byte blocks
+    l2_cache = new Cache(512, 16);
 }
 
 //Destructor: Clean up the linked list to avoid memory leaks
@@ -14,6 +18,58 @@ MemoryManager::~MemoryManager(){
         MemoryBlock* next = current->next;
         delete current;
         current = next;
+    }
+    delete l1_cache;
+    delete l2_cache;
+    for(auto& pair : process_page_tables){
+        delete pair.second;
+    }
+    process_page_tables.clear();
+}
+
+size_t MemoryManager::virtual_to_physical(int pid, size_t virtual_addr){
+    // 1. If process doesn't have a page table, create one
+    if(process_page_tables.find(pid) == process_page_tables.end()){
+        process_page_tables[pid] = new PageTable(page_size);
+    }
+
+    size_t page_num = virtual_addr / page_size;
+    size_t offset = virtual_addr % page_size;
+
+    int frame_num = process_page_tables[pid]->translate(page_num);
+
+    if(frame_num==-1){
+        // PAGE FAULT HANDLING
+        std::cout << "[PAGE FAULT] Process " << pid << " accessed Page " << page_num << "\n";
+
+        //In a real OS, we'd find a free frame. In our sim, we'll just map it to a "simulated" frame for now.
+        frame_num = page_num; //Simplification: Identity mapping for the demo
+        process_page_tables[pid]->map(page_num, frame_num);
+        std::cout << "[PAGE FAULT FIXED] Mapped Page " << page_num << " to frame " << frame_num << "\n";
+    }
+
+    size_t physical_addr = (frame_num * page_size) + offset;
+    return physical_addr;
+}
+
+void MemoryManager::access_memory(size_t address){
+    std::cout << "Accessing Address: 0x" << std::hex 
+                                         << std::setw(4)
+                                         << std::setfill('0')
+                                         << address 
+                                         << std::dec << "...\n";
+
+    // 1. Try L1 Cache 
+    if(l1_cache->access(address)){
+        std::cout << "L1 Hit!\n";
+    }
+    // 2. If L1 miss, try L2 Cache
+    else if(l2_cache->access(address)){
+        std::cout << "L1 miss, L2 hit!\n";
+    }
+    //3. If both miss, it's a "Main Memory Access" (Slow)
+    else{
+        std::cout << "L1 miss, L2 miss, Fetching from Main Memory...\n";
     }
 }
 
@@ -78,7 +134,7 @@ long long MemoryManager::allocate(size_t request_size, int process_id){
         }
         selected_block->is_free = false;
         selected_block->process_id = process_id;
-        return (long long)selected_block->start_address;
+        return (long long) selected_block->start_address;
     }
 
     return -1;
@@ -164,6 +220,8 @@ void MemoryManager::display_stats(){
     std::cout << "Utilization:     " << std::fixed << std::setprecision(2) << utilization << "%\n";
     std::cout << "External Fragmentation:   " << fragmentation << "%\n";
     std::cout << "Free Block Count: " << free_block_count << "\n";
+    std::cout << "\nL1 "; l1_cache->display_stats();
+    std::cout << "L2 "; l2_cache->display_stats();
     std::cout << "=======================================\n";
 }
 //Simple Visualization for debugging
