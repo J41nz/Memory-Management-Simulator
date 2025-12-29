@@ -1,5 +1,6 @@
 #include "./../include/MemoryManager.hpp"
 #include <iomanip>
+#include <limits>
 
 //Constructor: Initializes the simulation with one giant FREE block
 MemoryManager::MemoryManager(size_t size) : total_size(size), current_strategy("First Fit") {
@@ -77,6 +78,12 @@ void MemoryManager::set_strategy(std::string strategy){
     current_strategy = strategy;
 }
 
+size_t MemoryManager::next_power_of_two(size_t n){
+    size_t val = 1;
+    while(val<n) val<<=1;
+    return val;
+}
+
 //the allocation logic
 long long MemoryManager::allocate(size_t request_size, int process_id){
     MemoryBlock* selected_block = nullptr;
@@ -93,7 +100,7 @@ long long MemoryManager::allocate(size_t request_size, int process_id){
     }
     else if(current_strategy == "Best Fit"){
         MemoryBlock* current = head;
-        size_t smallest_so_far = 9999999;
+        size_t smallest_so_far = std::numeric_limits<size_t>::max();
         while(current!=nullptr){
             if(current->is_free && current->size>=request_size){
                 if(current->size < smallest_so_far){
@@ -117,10 +124,49 @@ long long MemoryManager::allocate(size_t request_size, int process_id){
             current = current->next;
         }
     }
+    else if(current_strategy == "Buddy"){
+        size_t target_size = next_power_of_two(request_size);
+        MemoryBlock* current = head;
+        MemoryBlock* best_buddy = nullptr;
+
+        // 1. Finds the smallest block that is >= target_size
+        while(current!=nullptr){
+            if(current->is_free && current->size >= target_size){
+                if(!best_buddy || current->size < best_buddy->size){
+                    best_buddy = current;
+                }
+            }
+            current = current->next;
+        }
+        if(best_buddy){
+            // 2. Split the block until it is the perfect power-of-two size
+            while(best_buddy->size > target_size){
+                size_t new_size = best_buddy->size / 2;
+
+                //Create the buddy block
+                MemoryBlock* buddy = new MemoryBlock(
+                    best_buddy->start_address + new_size,
+                    new_size,
+                    true, -1
+                );
+
+                // Insert into the linked list
+                buddy->next = best_buddy->next;
+                buddy->prev = best_buddy;
+                if(best_buddy->next) best_buddy->next->prev = buddy;
+                best_buddy->next = buddy;
+
+                best_buddy->size = new_size;
+                // best_buddy remians the one we are looking for further splitting
+            }
+
+            selected_block = best_buddy;
+        }
+    }
 
     //Now after we find a block, using the split logic to split the memory to use only the required amount of memory
     if(selected_block){
-        if(selected_block->size > request_size){
+        if(current_strategy!="Buddy" && selected_block->size > request_size){
             MemoryBlock* new_free_block = new MemoryBlock(
                 selected_block->start_address+request_size,
                 selected_block->size-request_size, 
@@ -132,8 +178,22 @@ long long MemoryManager::allocate(size_t request_size, int process_id){
             selected_block->next = new_free_block;
             selected_block->size = request_size;
         }
+
         selected_block->is_free = false;
         selected_block->process_id = process_id;
+
+        if(process_page_tables.find(process_id) == process_page_tables.end()){
+            process_page_tables[process_id] = new PageTable(page_size);
+        }
+
+        size_t num_pages = (selected_block->size + page_size - 1) / page_size;
+        for(size_t i = 0; i < num_pages; i++){
+            process_page_tables[process_id]->map(
+                (selected_block->start_address / page_size) + i, 
+                (selected_block->start_address / page_size) + i
+            );
+        }
+        
         return (long long) selected_block->start_address;
     }
 
@@ -150,32 +210,74 @@ void MemoryManager::deallocate(int process_id){
             current->is_free=true;
             current->process_id = -1;
             found = true;
-
+            
             //coalescing logic
-            //1. Checks if the next block is also free
-            if(current->next!=nullptr && current->next->is_free){
-                MemoryBlock* temp = current->next;
-                current->size+=temp->size;
-                current->next = temp->next;
-                if(temp->next!=nullptr){
-                    temp->next->prev = current;
-                }
-                delete temp;
-            }
+            //Seperate if condition for buddy 
+            bool merged = true;
+            while(merged){
+                merged = false;
 
-            //2. checks if previous block is also free
-            if(current->prev!=nullptr && current->prev->is_free){
-                MemoryBlock* prev_block = current->prev;
-                prev_block->size+=current->size; 
-                prev_block->next = current->next;
-                if(current->next != nullptr){
-                    current->next->prev = prev_block;
+                //Buddy specific coalescing
+                if(current_strategy == "Buddy"){
+                    // A block's buddy is found by xoring the address with the size
+                    size_t buddy_addr = current->start_address ^ current->size;
+
+                    if(current->next && current->next->is_free && 
+                       current->next->start_address == buddy_addr &&
+                       current->next->size == current->size){
+                        
+                        MemoryBlock* temp = current->next;
+                        current->size += temp->size;
+                        current->next = temp->next;
+                        if(temp->next) temp->next->prev = current;
+                        delete temp;
+                        merged = true;
+                    }
+                    else if(current->prev && current->prev->is_free &&
+                            current->prev->start_address == buddy_addr && 
+                            current->prev->size == current->size){
+                        
+                        MemoryBlock* prev_block = current->prev;
+                        prev_block->size += current->size;
+                        prev_block->next = current->next;
+                        if(current->next) current->next->prev = prev_block;
+                        MemoryBlock* to_delete = current;
+                        current = prev_block;
+                        delete to_delete;
+                        merged = true;
+                    }
                 }
-                delete current;                
+                else{
+                    // If not buddy
+                    //1. Checks if the next block is also free
+                    if(current->next!=nullptr && current->next->is_free){
+                        MemoryBlock* temp = current->next;
+                        current->size+=temp->size;
+                        current->next = temp->next;
+                        if(temp->next!=nullptr){
+                            temp->next->prev = current;
+                        }
+                        delete temp;
+                        merged = true;
+                    }
+
+                    //2. checks if previous block is also free
+                    if(current->prev!=nullptr && current->prev->is_free){
+                        MemoryBlock* prev_block = current->prev;
+                        prev_block->size+=current->size; 
+                        prev_block->next = current->next;
+                        if(current->next != nullptr){
+                            current->next->prev = prev_block;
+                        }
+                        MemoryBlock* to_delete = current;
+                        current = prev_block;
+                        delete to_delete;
+                        merged = true;
+                    }
+                }
             }
 
             std::cout << "Process " << process_id << " deallocated and memory coalesced.\n";
-            return; 
         }
         current = current->next;
     }
@@ -218,7 +320,8 @@ void MemoryManager::display_stats(){
     std::cout << "Used Memory:     " << used_memory << " bytes\n";
     std::cout << "Free Memory:     " << free_memory << " bytes\n";
     std::cout << "Utilization:     " << std::fixed << std::setprecision(2) << utilization << "%\n";
-    std::cout << "External Fragmentation:   " << fragmentation << "%\n";
+    if(current_strategy!="Buddy") std::cout << "External Fragmentation:   " << fragmentation << "%\n";
+    if(current_strategy=="Buddy") std::cout << "Internal Fragmentation:   " << fragmentation << "%\n";
     std::cout << "Free Block Count: " << free_block_count << "\n";
     std::cout << "\nL1 "; l1_cache->display_stats();
     std::cout << "L2 "; l2_cache->display_stats();

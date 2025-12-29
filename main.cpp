@@ -28,7 +28,7 @@ int main(){
             std::cout << "  init <size>         - Reinitialize memory with new size\n";
             std::cout << "  malloc <size> <pid> - Allocate memory for a process\n";
             std::cout << "  free <pid>          - Deallocate memory for a process\n";
-            std::cout << "  strategy <name>     - Set strategy (first_fit, best_fit, worst_fit)\n";
+            std::cout << "  strategy <name>     - Set strategy (first_fit, best_fit, worst_fit, buddy)\n";
             std::cout << "  dump                - Show memory map\n";
             std::cout << "  stats               - Show fragmentation and utilization\n";
             std::cout << "  access <address>    - Checks for an address in L1 and L2 Caches\n";
@@ -65,6 +65,7 @@ int main(){
             if(strat == "first_fit") memSim->set_strategy("First Fit");
             else if(strat == "best_fit") memSim->set_strategy("Best Fit");
             else if(strat == "worst_fit") memSim->set_strategy("Worst Fit");
+            else if(strat == "buddy") memSim->set_strategy("Buddy");
             std::cout << "Strategy set to " << strat << "\n";
         }
         else if(command == "dump"){

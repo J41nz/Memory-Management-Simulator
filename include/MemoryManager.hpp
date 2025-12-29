@@ -4,6 +4,7 @@
 #include "MemoryBlock.hpp"
 #include "Cache.hpp"
 #include "PageTable.hpp"
+#include <unordered_map>
 #include <vector>
 #include <string>
 
@@ -12,6 +13,7 @@ class MemoryManager{
         size_t total_size; //total physical memory simulated
         MemoryBlock* head; //start of memory list
         std::string current_strategy; // first fit, best fit or worst fit
+        size_t next_power_of_two(size_t n);
         Cache* l1_cache;
         Cache* l2_cache;
         size_t page_size = 256;
