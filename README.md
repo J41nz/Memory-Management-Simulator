@@ -41,7 +41,3 @@ To run the provided stress test scenarios (ensure to make the script executable 
 *   L1 Cache: 128B, 2-way Set Associative
 *   L2 Cache: 512B, 4-way Set Associative
 6. Deallocation: Proper cleanup of Virtual Blocks and Physical Frames (preventing leaks).
-
-### Project Created By -: Atishay Jain (Electrical Engineering) (24115040)
-
-
