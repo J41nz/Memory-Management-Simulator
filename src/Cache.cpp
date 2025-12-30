@@ -3,42 +3,65 @@
 #include <iomanip>
 #include <algorithm>
 
-Cache::Cache(size_t cache_size, size_t block_sz)
-    : size(cache_size), block_size(block_sz){
-        num_lines = size / block_size;
+Cache::Cache(size_t size, size_t block_sz, size_t assoc)
+    : cache_size(size), block_size(block_sz), associativity(assoc) {
+    if (block_sz == 0 || assoc == 0) {
+        std::cerr << "Error: Invalid Cache Configuration (Block Size or Assoc is 0)\n";
+        num_sets = 1; // Fallback to avoid crash
+    } else {
+        num_sets = cache_size / (block_size * associativity);
+    }
+    sets.resize(num_sets);
+
+    //Initialize lines in each set
+    for(auto& set : sets){
+        set.lines.resize(associativity, {0, false});
+    }
 }
 
 bool Cache::access(size_t address){
-    size_t tag = address / block_size; // The "ID" of the memory block
+    size_t block_addr = address / block_size;
+    size_t set_index = block_addr % num_sets;
+    size_t tag = block_addr / num_sets;
 
-    // 1. Check for a HIT: Is this tag already in our FIFO queue?
-    auto it = std::find(fifo_queue.begin(), fifo_queue.end(), tag);
+    auto& set = sets[set_index];
 
-    if(it!=fifo_queue.end()){
-        hits++; return true;
+
+    // 1. Check for a HIT
+    for(size_t i = 0; i < associativity; i++){
+        if(set.lines[i].valid && set.lines[i].tag == tag){
+            hits++;
+            return true;
+        }
     }
 
-    // 2. If it's a miss
-    misses++;
+    misses++; 
+    //If queue size < associativity, we just add
+    //If queue size == associativity, we pop front (FIFO eviction).
 
-    // 3. Check if the cache is full
-    if(fifo_queue.size()>=num_lines){
-        //Cache full: fifo replacement policy in action
-        //remove the oldest element (the one at the front of the queue)
-        fifo_queue.pop_front();
+    size_t way_to_use = 0;
+    if(set.fifo_queue.size() < associativity){
+        //Still have space in this set
+        way_to_use = set.fifo_queue.size();
+        set.fifo_queue.push_back(way_to_use);
+    } else {
+        //Set is full -> evict the front member according to the FIFO policy
+        way_to_use = set.fifo_queue.front();
+        set.fifo_queue.pop_front();
+        set.fifo_queue.push_back(way_to_use);
     }
 
-    // 4. Add the new block to the back of the queue (it's the newest)
-    fifo_queue.push_back(tag);
+    //Update the hardware line
+    set.lines[way_to_use].valid = true;
+    set.lines[way_to_use].tag = tag;
 
-    return false; //MISS
+    return false;
 }
 
 void Cache::display_stats(){
-    double total_accesses = hits+misses;
-    double hit_ratio = (total_accesses==0) ? 0 : (double)hits / (total_accesses) * 100;
-    std::cout << "Cache Stats -> Hits: " << hits 
-              << " | Misses: " << misses
-              << " | Hit Ratio: " << std::fixed << std::setprecision(2)
-              << hit_ratio << "%\n";
+    long long total = hits+misses;
+    double ratio = (total == 0) ? 0.0 : (double)hits / total * 100.0;
+    std::cout << "Size: " << cache_size << "B | Assoc: " << associativity
+              << "-way | Hits: " << hits << " | Misses: " << misses
+              << " | Hit Ratio: " << std::fixed << std::setprecision(2) << ratio << "%\n";
 }

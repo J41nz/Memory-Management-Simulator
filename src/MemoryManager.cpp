@@ -1,15 +1,22 @@
 #include "./../include/MemoryManager.hpp"
 #include <iomanip>
 #include <limits>
+#include <thread>
+#include <chrono>
 
 //Constructor: Initializes the simulation with one giant FREE block
 MemoryManager::MemoryManager(size_t size) : total_size(size), current_strategy("First Fit") {
-    //create the initial block representing all of memory
-    head = new MemoryBlock(0, size, true, -1);
-    //Initializing L1: 128 bytes, 16-byte blocks
-    l1_cache = new Cache(128, 16);
-    //Initialize L2: 512 bytes, 16-byte blocks
-    l2_cache = new Cache(512, 16);
+    // Physical Memory Setup
+    physical_memory_size = size;
+    total_frames = physical_memory_size / page_size;
+    frame_table.assign(total_frames, -1); // All frames free (-1)
+
+    // Virtual Memory Manager: The 'head' list manages VIRTUAL space.
+    head = new MemoryBlock(0, 65536, true, -1);
+
+    //Cache: 128B Size, 16B block, 2-way set associative
+    l1_cache = new Cache(128, 16, 2);
+    l2_cache = new Cache(512, 16, 4);
 }
 
 //Destructor: Clean up the linked list to avoid memory leaks
@@ -28,6 +35,41 @@ MemoryManager::~MemoryManager(){
     process_page_tables.clear();
 }
 
+int MemoryManager::get_free_frame_or_evict(int pid){
+    //1. Check for free frames
+    for(int i=0; i<(int)total_frames; i++){
+        if(frame_table[i] == -1){
+            frame_table[i] = pid;
+            active_frames_fifo.push_back(i);
+            return i;
+        }
+    }
+
+    //2. If NO free frame -> Eviction (FIFO)
+    std::cout << "[DISK I/O] Physical Memory Full. Evicting victim page...\n";
+    std::this_thread::sleep_for(std::chrono::milliseconds(200)); //Simulate disk latency
+
+    //A. Pick victim framefrom the front of FIFO queue
+    int victim_frame = active_frames_fifo.front();
+    active_frames_fifo.pop_front();
+
+    //B. Find out who owned this frame
+    int victim_pid = frame_table[victim_frame];
+
+    //C. Update victim's page table
+    //This is basically telling the old process that its address "X" is no longer in RAM
+    if(victim_pid!=-1 && process_page_tables.find(victim_pid)!=process_page_tables.end()){
+        process_page_tables[victim_pid]->invalidate_frame(victim_frame);
+        std::cout << " -> Evicted PID " << victim_pid << " from Frame " << victim_frame << "\n";
+    }
+
+    //D. Assign frame to new process 
+    frame_table[victim_frame] = pid;
+    active_frames_fifo.push_back(victim_frame);
+
+    return victim_frame;
+}
+
 size_t MemoryManager::virtual_to_physical(int pid, size_t virtual_addr){
     // 1. If process doesn't have a page table, create one
     if(process_page_tables.find(pid) == process_page_tables.end()){
@@ -43,34 +85,33 @@ size_t MemoryManager::virtual_to_physical(int pid, size_t virtual_addr){
         // PAGE FAULT HANDLING
         std::cout << "[PAGE FAULT] Process " << pid << " accessed Page " << page_num << "\n";
 
-        //In a real OS, we'd find a free frame. In our sim, we'll just map it to a "simulated" frame for now.
-        frame_num = page_num; //Simplification: Identity mapping for the demo
-        process_page_tables[pid]->map(page_num, frame_num);
-        std::cout << "[PAGE FAULT FIXED] Mapped Page " << page_num << " to frame " << frame_num << "\n";
-    }
+        frame_num = get_free_frame_or_evict(pid);
 
-    size_t physical_addr = (frame_num * page_size) + offset;
-    return physical_addr;
+        //Update Page Table
+        process_page_tables[pid]->map(page_num, frame_num);
+        std::cout << "[PAGE FAULT HANDLED] Mapped V-Page " << page_num << " -> P-Frame " << frame_num << "\n";
+    }
+     return (frame_num * page_size) + offset;
 }
 
-void MemoryManager::access_memory(size_t address){
-    std::cout << "Accessing Address: 0x" << std::hex 
-                                         << std::setw(4)
-                                         << std::setfill('0')
-                                         << address 
-                                         << std::dec << "...\n";
+void MemoryManager::access_memory(size_t virtual_addr, int pid){
+    std::cout << "\n[CPU Request] Process " << pid << " requesting Virtual Address 0x"
+              << std::hex << virtual_addr << std::dec << "...\n";
 
-    // 1. Try L1 Cache 
-    if(l1_cache->access(address)){
-        std::cout << "L1 Hit!\n";
+    //Step 1: Translate Virtual ->physical (handles page faults)
+    size_t physical_addr = virtual_to_physical(pid, virtual_addr);
+
+    std::cout << " -> Physical Address: 0x" << std::hex << physical_addr << std::dec << "\n";
+
+    //Step 2: Access caches using physical address 
+    if(l1_cache->access(physical_addr)){
+        std::cout << " -> L1 Cache Hit!\n";
     }
-    // 2. If L1 miss, try L2 Cache
-    else if(l2_cache->access(address)){
-        std::cout << "L1 miss, L2 hit!\n";
+    else if(l2_cache->access(physical_addr)){
+        std::cout << " -> L1 miss, L2 Cache Hit!\n";
     }
-    //3. If both miss, it's a "Main Memory Access" (Slow)
     else{
-        std::cout << "L1 miss, L2 miss, Fetching from Main Memory...\n";
+        std::cout << " -> L1 miss, L2 miss. Fetching from Main Memory...\n";
     }
 }
 
@@ -86,6 +127,7 @@ size_t MemoryManager::next_power_of_two(size_t n){
 
 //the allocation logic
 long long MemoryManager::allocate(size_t request_size, int process_id){
+    total_allocs++;
     MemoryBlock* selected_block = nullptr;
     
     if(current_strategy == "First Fit"){
@@ -166,6 +208,12 @@ long long MemoryManager::allocate(size_t request_size, int process_id){
 
     //Now after we find a block, using the split logic to split the memory to use only the required amount of memory
     if(selected_block){
+        if(current_strategy == "Buddy"){
+            size_t actual_size = selected_block->size;
+            if(actual_size > request_size){
+                internal_fragmentation += (actual_size - request_size);
+            }
+        }
         if(current_strategy!="Buddy" && selected_block->size > request_size){
             MemoryBlock* new_free_block = new MemoryBlock(
                 selected_block->start_address+request_size,
@@ -182,21 +230,11 @@ long long MemoryManager::allocate(size_t request_size, int process_id){
         selected_block->is_free = false;
         selected_block->process_id = process_id;
 
-        if(process_page_tables.find(process_id) == process_page_tables.end()){
-            process_page_tables[process_id] = new PageTable(page_size);
-        }
-
-        size_t num_pages = (selected_block->size + page_size - 1) / page_size;
-        for(size_t i = 0; i < num_pages; i++){
-            process_page_tables[process_id]->map(
-                (selected_block->start_address / page_size) + i, 
-                (selected_block->start_address / page_size) + i
-            );
-        }
-        
+        successful_allocs++;
         return (long long) selected_block->start_address;
     }
 
+    failed_allocs++;
     return -1;
 }
 
@@ -282,7 +320,23 @@ void MemoryManager::deallocate(int process_id){
         current = current->next;
     }
 
-    if(!found){
+    if(found){
+        std::cout << "Process " << process_id << " virtual memory deallocated.\n";
+
+        int freed_frames = 0;
+        for(size_t i = 0; i<total_frames; i++){
+            if(frame_table[i] == process_id){
+                frame_table[i] = -1;
+                freed_frames++;
+            }
+        }
+        std::cout << " -> Released " << freed_frames << " physical frames.\n";
+
+        if(process_page_tables.find(process_id) != process_page_tables.end()){
+            delete process_page_tables[process_id];
+            process_page_tables.erase(process_id);
+        }
+    } else {
         std::cout << "Error: Process ID " << process_id << " not found.\n";
     }
 }
@@ -315,13 +369,25 @@ void MemoryManager::display_stats(){
         fragmentation = (1.0 - (static_cast<double>(largest_free_block)/free_memory)) * 100.0;
     }
 
+    // Success rate 
+    double success_rate = (total_allocs == 0) ? 0.0 :
+                          ((double)successful_allocs / total_allocs) * 100.0;
+
+    int occupied_frames = 0;
+    for(int i=0; i<(int)total_frames; i++){
+        if(frame_table[i] != -1) occupied_frames++;
+    }
+    double phys_utilization = (static_cast<double>(occupied_frames) / total_frames) * 100.0;
+
     std::cout << "\n========== MEMORY STATISTICS ==========\n";
     std::cout << "Total Memory:    " << total_size << " bytes\n";
     std::cout << "Used Memory:     " << used_memory << " bytes\n";
     std::cout << "Free Memory:     " << free_memory << " bytes\n";
-    std::cout << "Utilization:     " << std::fixed << std::setprecision(2) << utilization << "%\n";
-    if(current_strategy!="Buddy") std::cout << "External Fragmentation:   " << fragmentation << "%\n";
-    if(current_strategy=="Buddy") std::cout << "Internal Fragmentation:   " << fragmentation << "%\n";
+    std::cout << "Utilization (Virtual): " << std::fixed << std::setprecision(2) << utilization << "% (Overcommitment)\n";
+    std::cout << "Utilization (Physical):" << phys_utilization << "% (" << occupied_frames << "/" << total_frames << " frames)\n";
+    std::cout << "Internal Fragmentation: " << internal_fragmentation << " bytes\n";
+    std::cout << "Allocation Succes Rate: " << success_rate << "%\n";
+    std::cout << "External Fragmentation:   " << fragmentation << "%\n";
     std::cout << "Free Block Count: " << free_block_count << "\n";
     std::cout << "\nL1 "; l1_cache->display_stats();
     std::cout << "L2 "; l2_cache->display_stats();

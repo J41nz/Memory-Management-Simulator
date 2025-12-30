@@ -2,30 +2,39 @@
 #define CACHE_HPP
 
 #include <vector>
-#include <unordered_map>
 #include <list>
-
-struct CacheLine{
-    size_t tag;
-    bool valid = false;
-};
+#include <cmath>
+#include <iostream>
+#include <iomanip>
 
 class Cache{
 private:
-    size_t size;        // Total bytes in cache
-    size_t block_size;  // Size of one cache line
-    size_t num_lines;
-    std::vector<CacheLine> lines;
+    struct CacheLine{
+        size_t tag;
+        bool valid;
+    };
+    
+    // A set contains multiple ways(lines) and a replacement queue
+    struct CacheSet{
+        std::vector<CacheLine> lines;
+        std::list<size_t> fifo_queue; 
+    };
 
-    //For FIFO Replacement
-    std::list<size_t> fifo_queue;
+    size_t cache_size;
+    size_t block_size;
+    size_t associativity; // K-way
+    size_t num_sets;
 
-    int hits = 0;
-    int misses = 0;
+    std::vector<CacheSet> sets;
+
+    //Stats
+    long long hits = 0;
+    long long misses = 0;
 
 public:
-    Cache(size_t cache_size, size_t block_sz);
-    bool access(size_t address); //Returns true if HIT, false if MISS
+    Cache(size_t size, size_t block_sz, size_t assoc);
+
+    bool access(size_t address);
     void display_stats();
 };
 

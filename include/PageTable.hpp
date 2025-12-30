@@ -2,6 +2,7 @@
 #define PAGE_TABLE_HPP
 
 #include <unordered_map>
+#include <iostream>
 #include <vector>
 
 struct PageTableEntry{
@@ -12,7 +13,7 @@ struct PageTableEntry{
 class PageTable{
 private:
     //Maps Page Number -> PageTableEntry
-    std::unordered_map<int, PageTableEntry> table;
+    std::unordered_map<int, PageTableEntry> entries;
     size_t page_size;
 
 public:
@@ -24,7 +25,8 @@ public:
     //Return frame number, or -1 if Page Fault
     int translate(int page_num);
 
-    size_t get_page_size(){ return page_size; }
+    //Finds which page points to a specific frame and invalidates it
+    void invalidate_frame(int frame_num);
 };
 
 #endif

@@ -5,15 +5,17 @@
 #include <sstream>
 
 int main(){
-    std::cout << "Memory Management Simulator\n";
+    std::cout << "==========================================\n";
+    std::cout << "      Memory Management Simulator\n";
+    std::cout << "==========================================\n";
     std::cout << "Type 'help' for a list of commands.\n";
 
-    //Initialize with a default size
+    // Initialized with 1024 Bytes of Physical RAM
     MemoryManager* memSim = new MemoryManager(1024);
     std::string line;
     
     while(true){
-        std::cout << ">";
+        std::cout << "\n> ";
         if(!std::getline(std::cin, line)) break;
 
         std::stringstream ss(line);
@@ -25,32 +27,31 @@ int main(){
         }
         else if(command == "help"){
             std::cout << "Commands: \n";
-            std::cout << "  init <size>         - Reinitialize memory with new size\n";
-            std::cout << "  malloc <size> <pid> - Allocate memory for a process\n";
-            std::cout << "  free <pid>          - Deallocate memory for a process\n";
-            std::cout << "  strategy <name>     - Set strategy (first_fit, best_fit, worst_fit, buddy)\n";
-            std::cout << "  dump                - Show memory map\n";
-            std::cout << "  stats               - Show fragmentation and utilization\n";
-            std::cout << "  access <address>    - Checks for an address in L1 and L2 Caches\n";
-            std::cout << "  vaccess <pid> <virtual_address> - returns physical address from virtual address of a process\n"; 
+            std::cout << "  init <size>          - Reinitialize physical memory size\n";
+            std::cout << "  malloc <size> <pid>  - Allocate Virtual Memory for a process\n";
+            std::cout << "  free <pid>           - Deallocate memory for a process\n";
+            std::cout << "  strategy <name>      - Set strategy (first_fit, best_fit, worst_fit, buddy)\n";
+            std::cout << "  access <pid> <addr>  - CPU accesses Virtual Address (Triggers VM translation)\n";
+            std::cout << "  dump                 - Show Memory Block Map (Virtual)\n";
+            std::cout << "  stats                - Show Physical RAM stats & Cache Hit Rates\n";
         }
         else if(command == "init"){
             size_t size;
             ss >> size;
             delete memSim;
             memSim = new MemoryManager(size);
-            std::cout << "Memory initialized to " << size << " bytes.\n";
+            std::cout << "System Re-initialized with " << size << " bytes of Physical RAM.\n";
         }
         else if(command == "malloc"){
             size_t size;
             int pid;
             if(ss >> size >> pid){
                 auto addr = memSim->allocate(size, pid);
-                if(addr==-1)
-                    std::cout << "Error: Not enough memory!\n";
+                if(addr == -1)
+                    std::cout << "Error: Allocation Failed (Virtual Address Space Full)\n";
                 else{
-                    std::cout << "Allocated block id=" << pid << " at address=0x"
-                              << std::hex << std::setw(4) << std::setfill('0') << addr << std::dec << "\n";
+                    std::cout << "Allocated Virtual Block for PID " << pid << " @ 0x" 
+                              << std::hex << addr << std::dec << "\n";
                 }
             }
         }
@@ -61,12 +62,11 @@ int main(){
         else if(command == "strategy"){
             std::string strat;
             ss >> strat;
-            // Map the simple string to formal name 
             if(strat == "first_fit") memSim->set_strategy("First Fit");
             else if(strat == "best_fit") memSim->set_strategy("Best Fit");
             else if(strat == "worst_fit") memSim->set_strategy("Worst Fit");
             else if(strat == "buddy") memSim->set_strategy("Buddy");
-            std::cout << "Strategy set to " << strat << "\n";
+            std::cout << "Allocation Strategy set to: " << strat << "\n";
         }
         else if(command == "dump"){
             memSim->dump_memory();
@@ -74,23 +74,14 @@ int main(){
         else if(command == "stats"){
             memSim->display_stats();
         }
+
         else if(command == "access"){
-            size_t addr;
-            if(ss >> addr){
-                memSim->access_memory(addr);
-            }
-            std::cout << std::dec;
-        }
-        else if(command == "vaccess"){
             int pid;
             size_t v_addr;
-            if(ss >> pid >> v_addr){
-                std::cout << "Translating Virtual Address 0x" << std::hex << v_addr << " for PID " << pid << "...\n";
-                size_t p_addr = memSim->virtual_to_physical(pid, v_addr);
-                std::cout << "Physical Address: 0x" << std::hex << p_addr << std::dec << "\n";
-
-                // Now pass physical address to the Cache
-                memSim->access_memory(p_addr);
+            if(ss >> pid >> std::hex >> v_addr){
+                memSim->access_memory(v_addr, pid);
+            } else {
+                std::cout << "Usage: access <pid> <virtual_address>\n";
             }
         }
         else{
