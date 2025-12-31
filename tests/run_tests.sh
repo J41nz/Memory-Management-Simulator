@@ -1,4 +1,4 @@
 #!/bin/bash
 echo "Running Stress Test..."
-./memsim < tests/test_stress.txt
+../memsim < test_stress.txt
 echo "Test Complete."
