@@ -41,3 +41,10 @@ To run the provided stress test scenarios (ensure to make the script executable 
 *   L1 Cache: 128B, 2-way Set Associative
 *   L2 Cache: 512B, 4-way Set Associative
 6. Deallocation: Proper cleanup of Virtual Blocks and Physical Frames (preventing leaks).
+
+## Demo Video
+
+
+https://github.com/user-attachments/assets/da7a43d0-8185-4d98-842b-4bd0b955d2d5
+
+
