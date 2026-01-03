@@ -48,3 +48,9 @@ To run the provided stress test scenarios (ensure to make the script executable 
 https://github.com/user-attachments/assets/da7a43d0-8185-4d98-842b-4bd0b955d2d5
 
 
+## Technical Disclaimer & Simulation Scope
+**Note on OS Fidelity: This project is a functional simulation designed to demonstrate the mathematical and logical principles of memory management (e.g., Buddy System, Page Tables, and Set-Associative Caching).**
+### Key Simplifications:
+* Implicit Mapping: Unlike a production OS (like Linux or Windows), which would trigger a Segmentation Fault when accessing unallocated memory, this simulator uses an "Implicit Demand Paging" model. If a CPU request is made for an unmapped page, the system automatically handles it as a Page Fault and maps a physical frame, regardless of whether malloc() was previously called.
+* Lack of Protection Bits: To focus on the translation pipeline, we have omitted hardware-level protection bits (Read/Write/Execute).
+* Abstraction of Integration: The simulation focuses on the Address Translation Pipeline rather than the complex integration between the Virtual Memory Manager's state and the CPU's instruction set.
